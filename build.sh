@@ -5,7 +5,7 @@ make
 # Download the latest Limine binary release for the 11.x branch.
 #git clone https://github.com/Limine-Bootloader/Limine.git limine --branch=v11.x-binary --depth=1 //Done
 
-cp bin/SovrixOS iso_root/boot/SovrixOS
+cp bin/BarqOS iso_root/boot/BarqOS
 
 #sudo dnf install edk2-ovmf //Done
 
@@ -39,7 +39,7 @@ xorriso -as mkisofs -R -r -J -b boot/limine/limine-bios-cd.bin \
 
 cd ~/Documents/MyOS
 
-cp iso_root/boot/SovrixOS /run/media/mrv/AB8B-5070/boot/SovrixOS
+cp iso_root/boot/BarqOS /run/media/mrv/AB8B-5070/boot/BarqOS
 
 qemu-system-x86_64 \
  -enable-kvm \
