@@ -42,6 +42,9 @@ cd ~/Documents/MyOS
 cp iso_root/boot/BarqOS /run/media/mrv/AB8B-5070/boot/BarqOS
 
 qemu-system-x86_64 \
+ -no-reboot \
+ -d int,cpu_reset \
+ -D qemu.log \
  -enable-kvm \
  -m 512 \
  -bios /usr/share/OVMF/OVMF_CODE.fd \

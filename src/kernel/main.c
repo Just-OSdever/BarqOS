@@ -2,25 +2,23 @@
 #include <stddef.h>
 #include <stdbool.h>
 #include <limine.h>
+#include <include.h>
 
-// Set the base revision to 6, this is recommended as this is the latest
+
+// Set the base revision to 6 (the latest)
 
 __attribute__((used, section(".limine_requests")))
 static volatile uint64_t limine_base_revision[] = LIMINE_BASE_REVISION(6);
 
-// The Limine requests can be placed anywhere, but it is important that
-// the compiler does not optimise them away, so, usually, they should
-// be made volatile or equivalent, _and_ they should be accessed at least
-// once or marked as used with the "used" attribute as done here.
+// Frambuffer request
 
 __attribute__((used, section(".limine_requests")))
-static volatile struct limine_framebuffer_request framebuffer_request = {
+volatile struct limine_framebuffer_request framebuffer_request = {
     .id = LIMINE_FRAMEBUFFER_REQUEST_ID,
     .revision = 0
 };
 
-// Finally, define the start and end markers for the Limine requests.
-// These can also be moved anywhere, to any .c file, as seen fit.
+// The start and end markers for the Limine requests.
 
 __attribute__((used, section(".limine_requests_start")))
 static volatile uint64_t limine_requests_start_marker[] = LIMINE_REQUESTS_START_MARKER;
@@ -34,7 +32,7 @@ static volatile uint64_t limine_requests_end_marker[] = LIMINE_REQUESTS_END_MARK
 // DO NOT remove or rename these functions, or stuff will eventually break!
 // They CAN be moved to a different .c file.
 
-void *memcpy(void *restrict dest, const void *restrict src, size_t n) {
+/*void *memcpy(void *restrict dest, const void *restrict src, size_t n) {
     uint8_t *restrict pdest = (uint8_t *restrict)dest;
     const uint8_t *restrict psrc = (const uint8_t *restrict)src;
 
@@ -85,45 +83,54 @@ int memcmp(const void *s1, const void *s2, size_t n) {
     return 0;
 }
 
-// Halt and catch fire function.
-static void hcf(void) {
-    for (;;) {
-        asm ("hlt");
-    }
-}
+*/
 
-// The following will be our kernel's entry point.
-// If renaming kmain() to something else, make sure to change the
-// linker script accordingly.
+
+////////////////////////////////////////////////////////////////////////////////////////
+////////////////////////////////// Kernel Entry ///////////////////////////////////////
+//////////////////////////////////////////////////////////////////////////////////////
 void kmain(void) {
-    // Ensure the bootloader actually understands our base revision (see spec).
+    // Ensure the bootloader actually understands our base revision (Support it)
     if (LIMINE_BASE_REVISION_SUPPORTED(limine_base_revision) == false) {
         hcf();
     }
 
-    volatile int x = 123; //IDK , but that fixed some strange errors
+    framebuffer_init() ;
 
-    // Ensure we got a framebuffer.
-    if (framebuffer_request.response == NULL
-     || framebuffer_request.response->framebuffer_count < 1) {
-        hcf();
-    }
+    cls(0x121212);
 
-    // Fetch the first framebuffer.
-    struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
+    draw_vertical_line((framebuffer->width ) / 50 ,0xFFC107);       // ْX , color
+    draw_vertical_line((49 * framebuffer->width ) / 50 ,0xFFC107);       // ْX , color
+    draw_horizental_line((framebuffer->height ) / 50 ,0xFFC107);   //   Y , color
+    draw_horizental_line((49 * framebuffer->height ) / 50 ,0xFFC107);   //   Y , color
 
-    // Print a nice pattern to screen as an example.
-    // Note: we assume the framebuffer model is RGB with 32-bit pixels.
-    volatile uint32_t *fb_ptr = framebuffer->address;
-    for (size_t y = 0; y < framebuffer->height; y++) {
-        for (size_t x = 0; x < framebuffer->width; x++) {
-            uint32_t nX = x * 255 / framebuffer->width;
-            uint32_t nY = y * 255 / framebuffer->height;
-            fb_ptr[y * (framebuffer->pitch / 4) + x] = (nY << 8) | nX;
-        }
-    }
 
+    print_centered("BarqOS" , (280 / 4) , 0xFFC107 , 4);
+    print_step("Fast like lightning (Maybe)" , 0xFFC107 , 1);
+    current_y += (280 - 167);
+    print_step("Checking Frambuffer .....\n" , 0xd43100 , 1);
+    print_step("(Maybe)" , 0x00d48d , 1);
+    print_step("Checking GDT .....\n" , 0xd43100 , 1);
+    gdt_flush();
+    print_step("(Maybe)" , 0x00d48d , 1);
+    print_step("Checking IDT .....\n" , 0xd43100 , 1);
+    print_step("(still working on that)" , 0x00d48d , 1);
+    print_step("Checking Panic/Interrupt Handler .....\n" , 0xd43100 , 1);
+    print_step("(still working on that)" , 0x00d48d , 1);
+
+    cursor_x = 1;
+    cursor_y = 1;
     // We're done, just hang...
     hcf();
 }
 
+//////////////////////////////////////////////////////////////////////////////////////
+/////////////////////////////////////////////////////////////////////////////////////
+
+
+// Halt and catch fire function.
+void hcf(void) {
+    for (;;) {
+        asm ("hlt");
+    }
+}
