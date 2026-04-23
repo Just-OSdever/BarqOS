@@ -4,6 +4,8 @@
 
 
 #include <screen.h>
+//#include <port.h>
+#include <panic.h>
 
 extern void gdt_init();
 extern void idt_init();

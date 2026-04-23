@@ -35,24 +35,26 @@ section .text
 %endmacro
 
 ; simple IDT_INIT
-extern interrupt_handler_c
+extern soft_interrupt_handler_c
+
 idt_init:
     ; our handlers
-    set_gate 3, handler_wrapper, 0x08 ;the OSdeving interruppt
+    set_gate 3, software_handler_wrapper, 0x08 ;the OSdeving interruppt
     ;set_gate 1, keyboard_handler, 0x08
     
     lidt [rel idtr]
     ret
 
-handler_wrapper:
-    ;Save registers
+software_handler_wrapper:
+    ; Save registers
     push rax
     push rcx
     push rdx
     push rsi
     push rdi
 
-    call interrupt_handler_c
+    mov rdi, rsp
+    call soft_interrupt_handler_c
 
     pop rdi
     pop rsi
@@ -60,4 +62,11 @@ handler_wrapper:
     pop rcx
     pop rax
 
+    ; الحل هنا: لازم نضيف SS و RSP يدوياً عشان الـ iretq يلاقي الـ 5 قيم
+    mov rax, ss
+    push rax            ; ن push الـ SS الأصلي
+    push rsp            ; ن push الـ RSP الأصلي (قبل ما نعمل push للـ SS)
+    
+    ; لازم نعدل الـ RSP عشان الـ iretq ي pop القيم اللي ضفناها
+    ; لاحظ: بعد الـ push للـ SS والـ RSP، الـ RSP اتغير، لازم نرجع نظبطه
     iretq

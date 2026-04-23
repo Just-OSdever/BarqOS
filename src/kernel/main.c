@@ -121,7 +121,7 @@ void kmain(void) {
     idt_init();
     print_step("(Maybe)" , 0x00d48d , 1);
     print_step("Checking Panic/Interrupt Handler .....\n" , 0xd43100 , 1);
-    asm volatile ("int $3");
+    asm volatile ("int $3"); //Software interrupt
     print_step("Panic handler isn't working !" , 0xd43100 , 1);
 
     cursor_x = 1;
@@ -132,12 +132,7 @@ void kmain(void) {
 
 //////////////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////////////////////////////////////////////////////////
-
-
-void interrupt_handler_c(){
-    print_step("(Interrupt Triggered!)" , 0xFFFF00 , 1);
-    hcf();
-}
+// Why ??
 
 // Halt and catch fire function.
 void hcf(void) {
