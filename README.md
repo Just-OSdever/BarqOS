@@ -45,7 +45,8 @@ if you don't have it, just search how to install it on your OS
 ```bash
    sh run.sh
 ```
-### Windows 🪟 :
+---
+### Windows 🟦 :
 If you are on Windows, you can test the BQ0 Beta using QEMU by following these steps:
 
 1. Download the repo or clone it if you have Git Bash.
