@@ -77,6 +77,9 @@ override CFLAGS += \
 override CPPFLAGS := \
     -I src \
     -I src/include \
+    -I src/include/arch/x86_64 \
+    -I src/include/drivers \
+    -I src/include/kernel \
     $(CPPFLAGS) \
     -MMD \
     -MP

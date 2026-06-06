@@ -13,13 +13,16 @@ void IRQs_Handler(Registers* regs) {
         g_IRQHandler[irq](regs);
     }
     else {
-        print("Unhandled IRQ", 0xFFFFFF, 1);
+        char err_str[20];
+        uint_to_string(regs->int_no, err_str);
+        print("Unhandled IRQ: ", 0xFF0000, 1);
+        print(err_str, 0xFF0000, 1);
     }
     PIC_SendEOI(irq);
 }
 
-void IRQ_Intialize() {
+void IRQ_Intialize_PIC() {
     pic_remap();
-    __asm__ volatile ("sti");
-    g_IRQHandler[0] = timer_handler;
+    g_IRQHandler[0] = c_timer_handler;
+    g_IRQHandler[1] = c_keyboard_handler;
 }

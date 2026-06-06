@@ -25,5 +25,8 @@ void hcf(void);
 void print_centered(const char* text, int y, uint32_t color, int scale);
 void print_step(char* text, uint32_t color, int scale);
 void uint_to_string(uint64_t num, char* out_str);
+void barqos_boot_splash();
+
+extern int current_y;
 
 #endif

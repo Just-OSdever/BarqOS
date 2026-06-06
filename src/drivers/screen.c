@@ -19,9 +19,13 @@ void cls(uint32_t color) {
     }
 }
 
-void put_pixel(uint32_t x , uint32_t y , uint32_t color) {
-    if (framebuffer == NULL) return;
-    struct limine_framebuffer *framebuffer = framebuffer_request.response->framebuffers[0];
+void put_pixel(uint32_t x, uint32_t y, uint32_t color) {
+    if (framebuffer == NULL)
+        return;
+
+    if (x >= framebuffer->width || y >= framebuffer->height)
+        return;
+
     volatile uint32_t *fb_ptr = framebuffer->address;
     fb_ptr[y * (framebuffer->pitch / 4) + x] = color;
 }
@@ -100,16 +104,24 @@ void print(const char *str , uint32_t color , int scale) {
 int current_y = 167; // under the header
 
 void print_step(char* text, uint32_t color, int scale) {
-    int char_width = 16 * scale; 
+    int char_width = 16 * scale;
     int str_len = 0;
-    
-    while (text[str_len] != '\0') str_len++;
-    
-    int x = (framebuffer->width - (str_len * char_width)) / 2;
-    
+
+    while (text[str_len] != '\0')
+        str_len++;
+
+    int text_width = str_len * char_width;
+
+    int x = 0;
+
+    if (text_width < framebuffer->width)
+        x = (framebuffer->width - text_width) / 2;
+
     cursor_x = x;
     cursor_y = current_y;
+
     print(text, color, scale);
+
     current_y += (28 * scale);
 }
 
@@ -130,6 +142,25 @@ void uint_to_string(uint64_t num, char* out_str) {
         out_str[j] = out_str[i - 1 - j];
         out_str[i - 1 - j] = temp;
     }
+}
+
+void barqos_boot_splash() {
+
+    current_y = 60;
+
+    print_step("$$$$$$$$     $$$    $$$$$$$$   $$$$$$$    $$$$$$$   $$$$$$$ ", 0x00BFFF, 1);
+    print_step("$$     $$   $$ $$   $$     $$ $$     $$  $$     $$ $$     $$", 0x33CCFF, 1);
+    print_step("$$$$$$$$   $$   $$  $$$$$$$$  $$     $$  $$     $$ $$       ", 0x66FFFF, 1);
+    print_step("$$     $$ $$$$$$$$$ $$   $$   $$  $$ $$  $$     $$  $$$$$$$ ", 0x88FFFF, 1);
+    print_step("$$     $$ $$     $$ $$    $$  $$    $$$  $$     $$        $$", 0xAAFFFF, 1);
+    print_step("$$$$$$$$  $$     $$ $$     $$  $$$$$ $$   $$$$$$$   $$$$$$$ ", 0xFFFFFF, 1);
+
+    current_y += 25;
+    
+    print_step("Fast . Modern . Lightweight", 0xC0C0C0, 1);
+
+    current_y += 77;
+    
 }
 
 const uint8_t font16x16[] = {

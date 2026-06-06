@@ -11,7 +11,6 @@ IDT_load:
     lidt [rdi]              ; loading first argument
     o64 ret
 
-; بنعرف الـ Linker إن فيه فانكشن في الـ C اسمها كدة
 extern c_divide_by_zero_handler 
 
 global divide_by_zero_handler
@@ -19,7 +18,6 @@ divide_by_zero_handler:
     push rbp
     mov rbp, rsp
 
-    ; بنحفظ الـ Registers اللي الـ C ممكن يغير قيمتها (ده كمان بيظبط الـ Alignment)
     push rdi
     push rsi
     push rdx
@@ -28,7 +26,7 @@ divide_by_zero_handler:
     push r9
     push rax
     
-    call c_divide_by_zero_handler   ; نط على الـ C وأنت مطمن
+    call c_divide_by_zero_handler
     
     pop rax
     pop r9

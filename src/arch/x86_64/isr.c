@@ -1,7 +1,7 @@
 #include "isr.h"
 #include <screen.h>
 #include "idt.h"
-#include "../../include/port.h"
+#include "port.h"
 
 extern void c_divide_by_zero_handler();
 extern void c_keyboard_handler();

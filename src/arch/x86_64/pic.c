@@ -1,4 +1,5 @@
-#include "../../include/io.h"
+#include "io.h"
+#include "port.h"
 #include "pic.h"
 
 

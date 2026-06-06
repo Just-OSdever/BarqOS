@@ -6,6 +6,3 @@ iso_root/
 # Compiled images
 *.iso
 *.hdd
-
-# Limine clone (هتنزله تاني بأي سكريبت، مش محتاج ترفعه)
-limine/

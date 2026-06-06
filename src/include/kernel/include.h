@@ -7,8 +7,9 @@
 #include <port.h>
 #include <handlers.h>
 #include <gdt.h>
-#include "../arch/x86_64/irq.h"
-#include "../arch/x86_64/pic.h"
+#include "irq.h"
+#include "pic.h"
+#include "apic.h"
 
 extern void idt_init();
 void disable_apic();
