@@ -1,0 +1,226 @@
+#include <lzml_pmm.h>
+#include <strings.h>
+
+// variables and defines
+#define BLOCK_16KB 16384
+#define BLOCK_64KB 65536
+#define BLOCK_1MB 1048576
+#define BLOCK_100MB 104857600
+uint64_t PAGE_SIZE = 4096;
+// LZML Allocator (Lazy-Zero Multi-list)
+
+// Lists
+page_node_t *zero_pool_head = NULL;   // [  Level 0: 4KB  ]
+page_node_t *dirty_pool_head = NULL;  // [  Level 0: 4KB  ]
+page_node_t *block_pool_16kb = NULL;  // [  Level 1: 16KB ]
+page_node_t *block_pool_64kb = NULL;  // [  Level 2: 64KB ]
+page_node_t *block_pool_1mb = NULL;   // [  Level 3: 1MB  ]
+page_node_t *block_pool_100mb = NULL; // [ Level 4: 100MB ]
+
+static inline page_node_t *to_virt(uintptr_t phys_addr) {
+  return (page_node_t *)(phys_addr + hhdm_offset);
+}
+
+// Initialize
+void lzml_init() {
+  if (memmap_request.response == NULL || hhdm_request.response == NULL) {
+    hal_print("memmap or hhdm response is NULL, Our mem allocator failed",
+              0xff0000, 1);
+    while (1)
+      ;
+  }
+  hhdm_offset = hhdm_request.response->offset;
+  struct limine_memmap_response *memmap = memmap_request.response;
+  for (uint64_t i = 0; i < memmap->entry_count; i++) {
+    struct limine_memmap_entry *entry = memmap->entries[i];
+
+    if (entry->type == LIMINE_MEMMAP_USABLE) {
+      uintptr_t current_addr = entry->base;
+      uint64_t remaining_len = entry->length;
+      hal_print("[LZML] Usable block found at 0x", 0xFFFFFF, 1);
+      hal_print_hex(current_addr, 0x00FF00, 1);
+      hal_print(" with length: ", 0xFFFFFF, 1);
+      hal_print_dec(remaining_len, 0xFFFF00, 1);
+      hal_print(" bytes\n", 0xFFFFFF, 1);
+
+      uint64_t protected_ammount =
+          ((remaining_len * 20) / 100 / PAGE_SIZE) * PAGE_SIZE;
+
+      if (protected_ammount == 0 && remaining_len >= PAGE_SIZE) {
+        protected_ammount = PAGE_SIZE;
+      }
+
+      hal_print("  [>] Slicing 20% for single pages: ", 0x00FFFF, 1);
+      hal_print_dec(protected_ammount, 0x00FFFF, 1);
+      hal_print(" bytes...\n", 0x00FFFF, 1);
+
+      while (protected_ammount >= PAGE_SIZE && remaining_len >= PAGE_SIZE) {
+        page_node_t *virt = to_virt(current_addr);
+        virt->next = dirty_pool_head;
+        dirty_pool_head = (page_node_t *)current_addr;
+
+        current_addr += PAGE_SIZE;
+        protected_ammount -= PAGE_SIZE;
+        remaining_len -= PAGE_SIZE;
+      }
+      uint64_t protected_huge =
+          ((remaining_len * 5) / 100 / BLOCK_100MB) * BLOCK_100MB;
+
+      if (protected_huge == 0 && remaining_len >= BLOCK_100MB) {
+        protected_huge = BLOCK_100MB;
+      }
+
+      hal_print("  [>] Slicing 5% for Legendary blocks: ", 0xff00ff, 1);
+      hal_print_dec(protected_huge, 0xff00ff, 1);
+      hal_print(" bytes...\n", 0xff00ff, 1);
+
+      while (protected_huge >= BLOCK_100MB && remaining_len >= BLOCK_100MB) {
+        page_node_t *virt = to_virt(current_addr);
+        virt->next = block_pool_100mb;
+        block_pool_100mb = (page_node_t *)current_addr;
+
+        current_addr += BLOCK_100MB;
+        protected_huge -= BLOCK_100MB;
+        remaining_len -= BLOCK_100MB;
+      }
+
+      while (remaining_len >= PAGE_SIZE) {
+        if (remaining_len >= BLOCK_1MB) {
+          hal_print("    [+] Carved 1MB Block at 0x", 0xFFA500, 1);
+          hal_print_hex(current_addr, 0xFFA500, 1);
+          hal_print("\n", 0xFFFFFF, 1);
+          to_virt(current_addr)->next = block_pool_1mb;
+          block_pool_1mb = (page_node_t *)current_addr;
+
+          current_addr += BLOCK_1MB;
+          remaining_len -= BLOCK_1MB;
+        } else if (remaining_len >= BLOCK_64KB) {
+          hal_print("    [+] Carved 64KB Block at 0x", 0xFFFF00, 1);
+          hal_print_hex(current_addr, 0xFFFF00, 1);
+          hal_print("\n", 0xFFFFFF, 1);
+          to_virt(current_addr)->next = block_pool_64kb;
+          block_pool_64kb = (page_node_t *)current_addr;
+
+          current_addr += BLOCK_64KB;
+          remaining_len -= BLOCK_64KB;
+        } else if (remaining_len >= BLOCK_16KB) {
+          hal_print("    [+] Carved 16KB Block at 0x", 0x00FFFF, 1);
+          hal_print_hex(current_addr, 0x00FFFF, 1);
+          hal_print("\n", 0xFFFFFF, 1);
+          to_virt(current_addr)->next = block_pool_16kb;
+          block_pool_16kb = (page_node_t *)current_addr;
+
+          current_addr += BLOCK_16KB;
+          remaining_len -= BLOCK_16KB;
+        } else {
+          hal_print("    [+] Carved leftover 4KB Page at 0x", 0xFF8080, 1);
+          hal_print_hex(current_addr, 0xFF8080, 1);
+          hal_print("\n", 0xFFFFFF, 1);
+          to_virt(current_addr)->next = dirty_pool_head;
+          dirty_pool_head = (page_node_t *)current_addr;
+
+          current_addr += PAGE_SIZE;
+          remaining_len -= PAGE_SIZE;
+        }
+      }
+    }
+  }
+}
+
+// void lzml_borrow_and_trim(int current_level, size_t target_size) {}
+
+void *lzml_alloc(size_t size) {
+  if (size == 0)
+    return NULL;
+  size_t estimated_size = (size + PAGE_SIZE - 1) & ~(PAGE_SIZE - 1);
+
+  // ---------------------------- [ Level 0: 4KB ] ----------------------------
+  if (estimated_size <= PAGE_SIZE) {
+    // allocate from the zero pages or dirty
+    if (zero_pool_head != NULL) {
+      // get the first one
+      uintptr_t allocated_addr = (uintptr_t)zero_pool_head;
+      // cursor move
+      zero_pool_head = to_virt(allocated_addr)->next;
+      // zero the header (next) then return
+      memset(to_virt(allocated_addr), 0, sizeof(page_node_t));
+      hal_print("allocated a zeroed page", 0xff8080, 1);
+      return (void *)to_virt(allocated_addr);
+    } else if (dirty_pool_head != NULL) {
+      uintptr_t allocated_addr = (uintptr_t)dirty_pool_head;
+      // cursor move
+      dirty_pool_head = to_virt(allocated_addr)->next;
+      // clean the dirty page and return it
+      memset(to_virt(allocated_addr), 0, PAGE_SIZE);
+      hal_print("allocated a dirty (cleaned) page", 0xff8080, 1);
+      return (void *)to_virt(allocated_addr);
+    } else {
+      // trim!
+    }
+    // --------------------------- [ Level 1: 16KB ] ---------------------------
+  } else if (estimated_size <= BLOCK_16KB) {
+    // check the 16KB blocks
+    if (block_pool_16kb != NULL) {
+      // let's gooooooo
+      uintptr_t allocated_addr = (uintptr_t)block_pool_16kb;
+      // cursor move
+      block_pool_16kb = to_virt(allocated_addr)->next;
+      // zero the header (next) then return
+      memset(to_virt(allocated_addr), 0, estimated_size);
+      hal_print("allocated a 16KB block", 0xff8080, 1);
+      return (void *)to_virt(allocated_addr);
+    } else {
+      // trim!
+    }
+  }
+  // ---------------------------- [ Level 2: 64KB ] ----------------------------
+  else if (estimated_size <= BLOCK_64KB) {
+    // check the 64KB blocks
+    if (block_pool_64kb != NULL) {
+      // let's gooooooo
+      uintptr_t allocated_addr = (uintptr_t)block_pool_64kb;
+      // cursor move
+      block_pool_64kb = to_virt(allocated_addr)->next;
+      // zero the header (next) then return
+      memset(to_virt(allocated_addr), 0, estimated_size);
+      hal_print("allocated a 64KB block", 0xff8080, 1);
+      return (void *)to_virt(allocated_addr);
+    } else {
+      // trim!
+    }
+  }
+  // ---------------------------- [ Level 3:  1MB ] ----------------------------
+  else if (estimated_size <= BLOCK_1MB) {
+    // check the 1MB blocks
+    if (block_pool_1mb != NULL) {
+      // let's gooooooo
+      uintptr_t allocated_addr = (uintptr_t)block_pool_1mb;
+      // cursor move
+      block_pool_1mb = to_virt(allocated_addr)->next;
+      // zero the header (next) then return
+      memset(to_virt(allocated_addr), 0, estimated_size);
+      hal_print("allocated a 1MB block", 0xff8080, 1);
+      return (void *)to_virt(allocated_addr);
+    } else {
+      // trim!
+    }
+  }
+  // --------------------------- [ Level 4: 100MB ] ---------------------------
+  else if (estimated_size <= BLOCK_100MB) {
+    // check the 100MB blocks
+    if (block_pool_100mb != NULL) {
+      // let's gooooooo
+      uintptr_t allocated_addr = (uintptr_t)block_pool_100mb;
+      // cursor move
+      block_pool_100mb = to_virt(allocated_addr)->next;
+      // zero the header (next) then return
+      memset(to_virt(allocated_addr), 0, estimated_size);
+      hal_print("allocated a legendary block", 0xe69730, 1);
+      return (void *)to_virt(allocated_addr);
+    } else {
+      // trim!
+    }
+  } else {
+    return NULL;
+  }
+}

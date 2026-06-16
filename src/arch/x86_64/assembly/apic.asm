@@ -46,3 +46,21 @@ extern PICEnabling
     pop rcx
     pop rbx
     ret
+
+global GetMSR
+GetMSR:
+    xor rax, rax
+    mov ecx, IA32_APIC_BASE_MSR
+    rdmsr
+    shl rdx, 32
+    or  rax, rdx
+    ret
+
+global SetMSR
+SetMSR:
+    mov ecx, edi
+    mov eax, esi
+    mov rdx, rsi
+    shr rdx, 32
+    wrmsr
+    ret

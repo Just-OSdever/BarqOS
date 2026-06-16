@@ -1,17 +1,22 @@
 #ifndef INCLUDE_H
 #define INCLUDE_H
 
-
-
-#include <screen.h>
-#include <port.h>
-#include <handlers.h>
+#include <apic.h>
 #include <gdt.h>
-#include "irq.h"
-#include "pic.h"
-#include "apic.h"
+#include <hal.h>
+#include <handlers.h>
+#include <irq.h>
+#include <limine.h>
+#include <lzml_pmm.h>
+#include <pic.h>
+#include <port.h>
+#include <screen.h>
+#include <stdbool.h>
+#include <stddef.h>
+#include <stdint.h>
 
 extern void idt_init();
 void disable_apic();
+extern volatile uint64_t limine_base_revision[];
 
 #endif

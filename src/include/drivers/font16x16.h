@@ -6,6 +6,7 @@
 #ifndef DISPLAY_FONT_16x16_H
 #define DISPLAY_FONT_16x16_H
 
+#include <stdint.h>
 
 extern const uint8_t font16x16[];
 

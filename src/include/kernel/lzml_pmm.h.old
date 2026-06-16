@@ -1,0 +1,32 @@
+#ifndef PMM_H
+#define PMM_H
+
+#include <hal.h>
+#include <limine.h>
+#include <stdint.h>
+#include <strings.h>
+
+// Page Node Type
+typedef struct {
+  uint64_t size;
+  uint8_t status; // 0: Free, 1: Used
+  void *next;
+  void *prev;
+} block_meta_t;
+
+// Lists
+extern page_node_t *zero_pool_head;
+extern page_node_t *dirty_pool_head;
+extern page_node_t *block_pool_16kb;
+extern page_node_t *block_pool_64kb;
+extern page_node_t *block_pool_1mb;
+
+// Limine info
+extern uintptr_t hhdm_offset;
+extern volatile struct limine_memmap_request memmap_request;
+extern volatile struct limine_hhdm_request hhdm_request;
+
+// Forward declaration
+void lzml_init();
+
+#endif

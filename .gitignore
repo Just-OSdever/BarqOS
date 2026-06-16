@@ -3,6 +3,9 @@ bin/
 obj/
 iso_root/
 
+# uunimportant images
+Barq went Crazy/
+
 # Compiled images
 *.iso
 *.hdd

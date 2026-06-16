@@ -1,4 +1,4 @@
-cd ~/Documents/MyOS
+cd ~/Documents/BarqOS
 make clean
 
 make
@@ -36,9 +36,7 @@ xorriso -as mkisofs -R -r -J -b boot/limine/limine-bios-cd.bin \
 # Install Limine stage 1 and 2 for legacy BIOS boot.
 ./limine/limine bios-install image.iso
 
-cd ~/Documents/MyOS
-
-cp iso_root/boot/BarqOS /run/media/mrv/AB8B-5070/boot/BarqOS #That's only for putting it in my real device UEFI boot menu
+cd ~/Documents/BarqOS
 
 qemu-system-x86_64 \
  -no-reboot \
