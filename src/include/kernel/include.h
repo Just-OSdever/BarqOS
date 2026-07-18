@@ -7,7 +7,7 @@
 #include <handlers.h>
 #include <irq.h>
 #include <limine.h>
-#include <buddy_pmm.h>
+#include <pmm.h>
 #include <pic.h>
 #include <port.h>
 #include <screen.h>
@@ -18,5 +18,6 @@
 extern void idt_init();
 void disable_apic();
 extern volatile uint64_t limine_base_revision[];
+extern void pmm_init();
 
 #endif

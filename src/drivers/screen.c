@@ -1,177 +1,234 @@
 #include <limine.h>
 #include <screen.h>
-#include <stddef.h> // Required for size_t
+#include <stddef.h>   // size_t
+#include <stdint.h>
 
-// Global variables kept as requested
-uint32_t cursor_x = 1;
-uint32_t cursor_y = 1;
-uint32_t bg_color = 0x0A0F1F ;
-int current_y = 0; // Tracks position under the header
+/* ============================================================
+ *  Console / cursor state
+ * ============================================================ */
+uint32_t cursor_x   = 1;
+uint32_t cursor_y   = 1;
+uint32_t bg_color   = 0x0A0F1F;
+int      current_y  = 0;
+
 struct limine_framebuffer *framebuffer = NULL;
 
-// --- OPTIMIZATION: Cached properties to avoid struct dereferencing overhead ---
-static uint32_t *fb_base = NULL;
-static uint32_t fb_pitch_pixels = 0;
-static uint32_t fb_width = 0;
-static uint32_t fb_height = 0;
+/* ============================================================
+ *  Cached framebuffer properties — avoids struct dereferencing
+ *  in every hot-path call.
+ * ============================================================ */
+static uint32_t *fb_base         = NULL;
+static uint32_t  fb_pitch_pixels = 0;   // pitch in 32-bit pixels, not bytes
+static uint32_t  fb_width        = 0;
+static uint32_t  fb_height       = 0;
+static uint32_t  fb_total_px     = 0;   // width*height, valid only when pitch==width
+static int       fb_contiguous   = 0;   // 1 if pitch_pixels == width (no row padding)
 
+#define GLYPH_W        16
+#define GLYPH_H        16
+#define LINE_HEIGHT_PX 24   // vertical advance per text line (unscaled)
+
+/* ============================================================
+ *  Init
+ * ============================================================ */
 void framebuffer_init() {
-    // Ensure we got a framebuffer
     if (framebuffer_request.response == NULL ||
         framebuffer_request.response->framebuffer_count < 1) {
         hcf(); // Halt and Catch Fire
     }
 
-    // Fetch the first framebuffer
     framebuffer = framebuffer_request.response->framebuffers[0];
-    
-    // Cache properties for extreme performance in rendering loops
-    fb_base = (uint32_t *)framebuffer->address;
-    fb_pitch_pixels = framebuffer->pitch / 4; // Shift pitch from bytes to 32-bit pixels
-    fb_width = framebuffer->width;
-    fb_height = framebuffer->height;
+
+    fb_base         = (uint32_t *)framebuffer->address;
+    fb_pitch_pixels = framebuffer->pitch / 4;
+    fb_width        = framebuffer->width;
+    fb_height       = framebuffer->height;
+    fb_contiguous   = (fb_pitch_pixels == fb_width);
+    fb_total_px     = fb_width * fb_height;
+
+    /* NOTE: if scrolling/clears are still slow after this rewrite, the
+     * remaining cost is almost certainly the memory type of the FB
+     * mapping. Make sure the page tables map this physical range as
+     * Write-Combining (PAT/PCD/PWT), not Uncacheable or plain WB.
+     * A UC framebuffer will make even a single memset() crawl,
+     * regardless of how tight this code is. */
 }
 
+/* ============================================================
+ *  Low-level fast fill helper
+ *  Fills `count` consecutive 32-bit pixels starting at `dst`
+ *  with `color`, unrolled 8-wide so the compiler can pack it
+ *  into wide stores instead of one store per loop iteration.
+ * ============================================================ */
+static inline void fast_fill32(uint32_t *dst, uint32_t color, uint32_t count) {
+    uint32_t i = 0;
+    uint32_t unrolled = count & ~7u; // largest multiple of 8 <= count
+
+    for (; i < unrolled; i += 8) {
+        dst[i]     = color;
+        dst[i + 1] = color;
+        dst[i + 2] = color;
+        dst[i + 3] = color;
+        dst[i + 4] = color;
+        dst[i + 5] = color;
+        dst[i + 6] = color;
+        dst[i + 7] = color;
+    }
+    for (; i < count; i++) {
+        dst[i] = color;
+    }
+}
+
+/* ============================================================
+ *  Pixel primitives
+ * ============================================================ */
 void put_pixel(uint32_t x, uint32_t y, uint32_t color) {
-    // Safety and bounds check using fast cached variables
     if (!fb_base || x >= fb_width || y >= fb_height)
         return;
-
-    // Direct memory write using 1D array math
     fb_base[y * fb_pitch_pixels + x] = color;
 }
 
 void cls(uint32_t color) {
     if (!fb_base) return;
 
-    // Optimized memory filling row by row
-    for (uint32_t y = 0; y < fb_height; y++) {
-        uint32_t *row = fb_base + (y * fb_pitch_pixels);
-        for (uint32_t x = 0; x < fb_width; x++) {
-            row[x] = color;
+    if (fb_contiguous) {
+        // Whole framebuffer is one contiguous block — single fast fill.
+        fast_fill32(fb_base, color, fb_total_px);
+    } else {
+        // Padded rows — fill each row's visible pixels only.
+        uint32_t *row = fb_base;
+        for (uint32_t y = 0; y < fb_height; y++) {
+            fast_fill32(row, color, fb_width);
+            row += fb_pitch_pixels;
         }
     }
     bg_color = color;
 }
 
+void clear_line(uint32_t y, uint32_t height) {
+    if (!fb_base) return;
+
+    uint32_t max_h = (y + height > fb_height) ? (fb_height - y) : height;
+    uint32_t *row = fb_base + (size_t)y * fb_pitch_pixels;
+
+    for (uint32_t h = 0; h < max_h; h++) {
+        fast_fill32(row, bg_color, fb_width);
+        row += fb_pitch_pixels;
+    }
+}
+
 void draw_vertical_line(uint32_t X, uint32_t color) {
     if (!fb_base || X >= fb_width - 1) return;
 
-    // Direct pointer manipulation avoids put_pixel overhead
     uint32_t *col_ptr = fb_base + X;
     for (uint32_t i = 1; i < fb_height; i++) {
         col_ptr[0] = color;
-        col_ptr[1] = color; // Draw 2 pixels wide
-        col_ptr += fb_pitch_pixels; // Move directly to the next row
+        col_ptr[1] = color; // 2px wide
+        col_ptr += fb_pitch_pixels;
     }
 }
 
 void draw_horizental_line(uint32_t Y, uint32_t color) {
     if (!fb_base || Y >= fb_height - 1) return;
 
-    // Optimized memory write for horizontal lines
-    uint32_t *row1 = fb_base + (Y * fb_pitch_pixels);
-    uint32_t *row2 = fb_base + ((Y + 1) * fb_pitch_pixels);
-    
-    for (uint32_t i = 1; i < fb_width; i++) {
-        row1[i] = color;
-        row2[i] = color; // Draw 2 pixels high
-    }
+    uint32_t *row1 = fb_base + (size_t)Y * fb_pitch_pixels;
+    uint32_t *row2 = row1 + fb_pitch_pixels;
+
+    fast_fill32(row1 + 1, color, fb_width - 1);
+    fast_fill32(row2 + 1, color, fb_width - 1);
 }
 
+/* ============================================================
+ *  Scrolling
+ *  memcpy is already the fastest correct approach here — the
+ *  original bottleneck (if any) is the FB memory type, not this
+ *  code. The clear-after-scroll now uses fast_fill32 instead of
+ *  a naive per-pixel loop.
+ * ============================================================ */
 void framebuffer_scroll(int scale) {
     if (!fb_base) return;
 
-    uint32_t line_height = 24 * scale;
-    uint32_t pitch = framebuffer->pitch; // Needs byte-pitch for memcpy
-    
+    uint32_t line_height = LINE_HEIGHT_PX * (uint32_t)scale;
+    if (line_height >= fb_height) return; // nothing sane to scroll
+
+    uint32_t pitch_bytes = framebuffer->pitch;
+
     uint8_t *fb_addr = (uint8_t *)framebuffer->address;
-    uint8_t *src = fb_addr + (line_height * pitch);
+    uint8_t *src = fb_addr + (size_t)line_height * pitch_bytes;
     uint8_t *dst = fb_addr;
 
-    // Shift memory up
-    size_t copy_size = (fb_height - line_height) * pitch;
+    size_t copy_size = (size_t)(fb_height - line_height) * pitch_bytes;
     __builtin_memcpy(dst, src, copy_size);
 
-    // Clear the newly freed space at the bottom
-    uint32_t *clear_ptr = (uint32_t *)(fb_addr + (fb_height - line_height) * pitch);
+    uint32_t *clear_ptr = (uint32_t *)(fb_addr + (size_t)(fb_height - line_height) * pitch_bytes);
     uint32_t pixels_to_clear = line_height * fb_pitch_pixels;
+    fast_fill32(clear_ptr, bg_color, pixels_to_clear);
 
-    for (uint32_t i = 0; i < pixels_to_clear; i++) {
-        clear_ptr[i] = bg_color; // Background color
-    }
-
-    // Reset cursors dynamically
-    cursor_y = fb_height - line_height;
-    cursor_x = 1;
-    current_y = cursor_y; 
+    cursor_y   = fb_height - line_height;
+    cursor_x   = 1;
+    current_y  = cursor_y;
 }
 
-void clear_line(uint32_t y, uint32_t height) {
-    if (!fb_base) return;
-
-    uint32_t *line_ptr = fb_base + (y * fb_pitch_pixels);
-    
-    // Fast line clearing
-    for (uint32_t h = 0; h < height; h++) {
-        for (uint32_t w = 0; w < fb_width; w++) {
-            line_ptr[w] = bg_color; 
+/* ============================================================
+ *  Text rendering
+ *  Rewritten inner loop: row pointer + x pointer are hoisted out
+ *  so each sub-pixel write is a plain store, not a recomputed
+ *  `py * pitch + px` multiply-add.
+ * ============================================================ */
+static inline void advance_cursor_and_wrap(int scale) {
+    cursor_x += (GLYPH_W * scale);
+    if (cursor_x + (GLYPH_W * scale) >= fb_width) {
+        cursor_x = 1;
+        cursor_y += (LINE_HEIGHT_PX * scale);
+        if (cursor_y + (LINE_HEIGHT_PX * scale) >= fb_height) {
+            framebuffer_scroll(scale);
         }
-        line_ptr += fb_pitch_pixels; // Jump to next row
     }
 }
 
 void print_char(char c, uint32_t color, int scale) {
     if (!fb_base) return;
 
-    // Handle newline character
     if (c == '\n') {
         cursor_x = 1;
-        cursor_y += (24 * scale);
-        if (cursor_y + (24 * scale) >= fb_height) {
+        cursor_y += (LINE_HEIGHT_PX * scale);
+        if (cursor_y + (LINE_HEIGHT_PX * scale) >= fb_height) {
             framebuffer_scroll(scale);
         }
         return;
     }
 
-    // Retrieve bitmap glyph
     const uint8_t *glyph = &font16x16[(c - 0x20) * 32];
-    
-    for (int y = 0; y < 16; y++) {
+
+    for (int y = 0; y < GLYPH_H; y++) {
         uint8_t byte1 = glyph[y * 2];
         uint8_t byte2 = glyph[y * 2 + 1];
 
-        for (int x = 0; x < 16; x++) {
-            uint8_t current_byte = (x < 8) ? byte1 : byte2;
-            int bit_pos = (x < 8) ? (7 - x) : (7 - (x - 8));
+        // Skip fully-empty glyph rows entirely (common for whitespace-heavy glyphs).
+        if (byte1 == 0 && byte2 == 0) continue;
 
-            // If bit is set, draw the scaled pixel
-            if ((current_byte >> bit_pos) & 1) {
-                for (int scale_y = 0; scale_y < scale; scale_y++) {
-                    for (int scale_x = 0; scale_x < scale; scale_x++) {
-                        // Inline pixel logic for faster text rendering
-                        uint32_t px = cursor_x + (x * scale) + scale_x;
-                        uint32_t py = cursor_y + (y * scale) + scale_y;
-                        if (px < fb_width && py < fb_height) {
-                            fb_base[py * fb_pitch_pixels + px] = color;
-                        }
-                    }
+        for (int scale_y = 0; scale_y < scale; scale_y++) {
+            uint32_t py = cursor_y + (uint32_t)(y * scale) + (uint32_t)scale_y;
+            if (py >= fb_height) continue;
+
+            uint32_t *row = fb_base + (size_t)py * fb_pitch_pixels;
+
+            for (int x = 0; x < GLYPH_W; x++) {
+                uint8_t cur_byte = (x < 8) ? byte1 : byte2;
+                int bit_pos = (x < 8) ? (7 - x) : (7 - (x - 8));
+                if (!((cur_byte >> bit_pos) & 1)) continue;
+
+                uint32_t px_base = cursor_x + (uint32_t)(x * scale);
+
+                for (int scale_x = 0; scale_x < scale; scale_x++) {
+                    uint32_t px = px_base + (uint32_t)scale_x;
+                    if (px < fb_width) row[px] = color;
                 }
             }
         }
     }
 
-    // Advance cursor
-    cursor_x += (16 * scale);
-
-    // Auto-wrap and scroll if we hit the screen edge
-    if (cursor_x + (16 * scale) >= fb_width) {
-        cursor_x = 1;
-        cursor_y += (24 * scale);
-        if (cursor_y + (24 * scale) >= fb_height) {
-            framebuffer_scroll(scale);
-        }
-    }
+    advance_cursor_and_wrap(scale);
 }
 
 void print(const char *str, uint32_t color, int scale) {
@@ -185,7 +242,7 @@ void print_dec(uint64_t num, uint32_t color, int scale) {
         print_char('0', color, scale);
         return;
     }
-    char buf[32];
+    char buf[20]; // max uint64 digits = 20
     int i = 0;
     while (num > 0) {
         buf[i++] = '0' + (num % 10);
@@ -201,8 +258,8 @@ void print_hex(uintptr_t num, uint32_t color, int scale) {
         print_char('0', color, scale);
         return;
     }
-    char buf[32];
-    char *hex_chars = "0123456789ABCDEF";
+    static const char hex_chars[] = "0123456789ABCDEF";
+    char buf[16]; // max 64-bit hex digits
     int i = 0;
     while (num > 0) {
         buf[i++] = hex_chars[num % 16];
@@ -219,31 +276,32 @@ void uint_to_string(uint64_t num, char *out_str) {
         out_str[i++] = '0';
     } else {
         while (num > 0) {
-            out_str[i++] = (num % 10) + '0';
+            out_str[i++] = (char)((num % 10) + '0');
             num /= 10;
         }
     }
     out_str[i] = '\0';
 
-    // Reverse the string
-    for (int j = 0; j < i / 2; j++) {
-        char temp = out_str[j];
-        out_str[j] = out_str[i - 1 - j];
-        out_str[i - 1 - j] = temp;
+    for (int j = 0, k = i - 1; j < k; j++, k--) {
+        char tmp = out_str[j];
+        out_str[j] = out_str[k];
+        out_str[k] = tmp;
     }
 }
 
+/* ============================================================
+ *  Boot splash
+ * ============================================================ */
 void barqos_boot_splash() {
     current_y = 60;
 
-    // NOTE: Requires hal_print to be defined elsewhere in your kernel
-    hal_print("\n\n\n", 0x00BFFF,1);
-    hal_print("$$$$$$$$     $$$    $$$$$$$$   $$$$$$$    $$$$$$$   $$$$$$$ \n",  0x00BFFF,1);
-    hal_print("$$     $$   $$ $$   $$     $$ $$     $$  $$     $$ $$     $$\n",  0x33CCFF,1);
-    hal_print("$$$$$$$$   $$   $$  $$$$$$$$  $$     $$  $$     $$ $$       \n",  0x66FFFF,1);
-    hal_print("$$     $$ $$$$$$$$$ $$   $$   $$  $$ $$  $$     $$  $$$$$$$ \n",  0x88FFFF,1);
-    hal_print("$$     $$ $$     $$ $$    $$  $$    $$$  $$     $$        $$\n",  0xAAFFFF,1);
-    hal_print("$$$$$$$$  $$     $$ $$     $$  $$$$$ $$   $$$$$$$   $$$$$$$ \n\n",0xFFFFFF,1);
+    hal_print("\n\n\n", 0x00BFFF, 1);
+    hal_print("$$$$$$$$     $$$    $$$$$$$$   $$$$$$$    $$$$$$$   $$$$$$$ \n",  0x00BFFF, 1);
+    hal_print("$$     $$   $$ $$   $$     $$ $$     $$  $$     $$ $$     $$\n",  0x33CCFF, 1);
+    hal_print("$$$$$$$$   $$   $$  $$$$$$$$  $$     $$  $$     $$ $$       \n",  0x66FFFF, 1);
+    hal_print("$$     $$ $$$$$$$$$ $$   $$   $$  $$ $$  $$     $$  $$$$$$$ \n",  0x88FFFF, 1);
+    hal_print("$$     $$ $$     $$ $$    $$  $$    $$$  $$     $$        $$\n",  0xAAFFFF, 1);
+    hal_print("$$$$$$$$  $$     $$ $$     $$  $$$$$ $$   $$$$$$$   $$$$$$$ \n\n", 0xFFFFFF, 1);
 
     current_y += 25;
 

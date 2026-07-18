@@ -80,6 +80,7 @@ override CPPFLAGS := \
     -I src/include/arch/x86_64 \
     -I src/include/drivers \
     -I src/include/kernel \
+    -I src/include/kernel/mm \
     $(CPPFLAGS) \
     -MMD \
     -MP
