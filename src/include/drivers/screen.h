@@ -19,7 +19,7 @@ void put_pixel(uint32_t x, uint32_t y, uint32_t color);
 void framebuffer_init();
 void draw_vertical_line(uint32_t X, uint32_t color);
 void draw_horizental_line(uint32_t Y, uint32_t color);
-void print_char(char c, uint32_t color, int scale);
+void print_char(unsigned char c, uint32_t color, int scale);
 void print(const char *str, uint32_t color, int scale);
 void hcf(void);
 void print_dec(uint64_t num, uint32_t color, int scale);
@@ -29,5 +29,6 @@ void clear_line(uint32_t y, uint32_t height);
 void barqos_boot_splash();
 
 extern int current_y;
+extern char font8x8_basic[128][8];
 
 #endif

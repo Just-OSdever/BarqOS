@@ -4,12 +4,6 @@ void hal_init() {
   __asm__("cli");
   gdt_init();
   idt_init();
-  for (int i = 0; i < 4; i++)
-    draw_horizental_line(20 + i, 0x00BFFF);
-
-  for (int i = 0; i < 4; i++)
-    draw_horizental_line(framebuffer->height - 20 - i, 0x00BFFF);
-
   barqos_boot_splash();
   disable_apic();
   IRQ_Intialize_PIC();

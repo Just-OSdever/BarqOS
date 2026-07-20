@@ -23,9 +23,9 @@ void c_keyboard_handler() {
     static char Scancode_str[4];
     uint_to_string(scancode_num, Scancode_str);
     
-    hal_print("Scancode -> ", 0xFFC107, 1);
-    hal_print(Scancode_str, 0xFFC107, 1);
-    hal_print(" \n", 0xFFC107, 1);
+    hal_print("Scancode -> ", 0xff00ff, 1);
+    hal_print(Scancode_str, 0xff00ff, 1);
+    hal_print(" \n", 0xff00ff, 1);
         
     static char ticks_str[20];
     uint_to_string(ticks, ticks_str);
@@ -35,9 +35,9 @@ void c_keyboard_handler() {
     current_y = 55;
     
     hal_clear_line(current_y, 24);
-    hal_print("Ticks from booting : ", 0xFFC107, 1);
-    hal_print(ticks_str, 0xFFC107, 1);
-    hal_print("  \n", 0xFFC107, 1);
+    hal_print("Ticks from booting : ", 0xff00ff, 1);
+    hal_print(ticks_str, 0xff00ff, 1);
+    hal_print("  \n", 0xff00ff, 1);
     
     // Restore original cursor position
     current_y = temp_y; 

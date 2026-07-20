@@ -19,6 +19,7 @@ bool found = false;
 uintptr_t cursor;
 Black_Blocks *my_array = NULL;
 static Black_Blocks *nothing;
+extern ticks;
 
 // Virsual and Physical battle
 uint64_t to_virt(uint64_t phys_addr) {
@@ -224,6 +225,3 @@ void get_new_array_and_add(uint64_t start , uint64_t end) {
     my_array[nonusable_blocks_num - 1].start_addr = start;
     my_array[nonusable_blocks_num - 1].end_addr = end;
 }
-
-
-// Isn't my code good

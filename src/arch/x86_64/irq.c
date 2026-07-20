@@ -13,7 +13,7 @@ void IRQs_Handler(Registers *regs) {
   } else {
     char err_str[20];
     uint_to_string(regs->int_no, err_str);
-    hal_print("Unhandled IRQ: ", 0xFF0000, 1);
+    hal_print("Unhandled IRQ: ", 0x00ff00, 1);
     hal_print(err_str, 0xFF0000, 1);
   }
   PIC_SendEOI(irq);
