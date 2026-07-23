@@ -49,3 +49,10 @@ void c_timer_handler() {
     ticks++;
     outb(0x20, 0x20); 
 }
+
+
+void panic(const char *str) {
+    hal_cls(0xff0000);
+    hal_print(str , 0xffffff , 1);
+    while(1);
+}

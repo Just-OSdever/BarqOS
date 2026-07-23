@@ -19,7 +19,7 @@ bool found = false;
 uintptr_t cursor;
 Black_Blocks *my_array = NULL;
 static Black_Blocks *nothing;
-extern ticks;
+extern int ticks;
 
 // Virsual and Physical battle
 uint64_t to_virt(uint64_t phys_addr) {
@@ -139,39 +139,139 @@ void OOM() {
     }
 }
 
-void *pmm_alloc(size_t size) {
+void *alloc(size_t size) {
+    int time = ticks;
+
     uintptr_t start = cursor;
     uintptr_t end = start + (uintptr_t)size;
-    for(uint64_t tries = 0; tries < (nonusable_blocks_num * 2) + 1 ; tries++) {
-        Black_Blocks *hit = find_collision((uint64_t)start , (uint64_t)end);
+
+    hal_print("\n========================\n", 0x00ff00, 1);
+    hal_print("NEW ALLOC\n", 0x00ff00, 1);
+
+    hal_print("cursor = ", 0xffffff, 1);
+    hal_print_hex(cursor, 0xffff00, 1);
+
+    hal_print("\nsize = ", 0xffffff, 1);
+    hal_print_dec(size, 0xffff00, 1);
+
+    hal_print("\nstart = ", 0xffffff, 1);
+    hal_print_hex(start, 0xffff00, 1);
+
+    hal_print("\nend = ", 0xffffff, 1);
+    hal_print_hex(end, 0xffff00, 1);
+    hal_print("\n", 0xffffff, 1);
+
+    for (uint64_t tries = 0; tries < (nonusable_blocks_num * 2) + 1; tries++) {
+
+        hal_print("\n---- TRY ", 0x00ffff, 1);
+        hal_print_dec(tries, 0xffffff, 1);
+        hal_print(" ----\n", 0x00ffff, 1);
+
+        Black_Blocks *hit = find_collision(start, end);
+
         if (hit != NULL) {
-            start = hit->end_addr;
-            end = start + (uintptr_t)size;   // just refrsh
-            continue;
+
+            hal_print("Collision!\n", 0xff0000, 1);
+
+            hal_print("hit->start = ", 0xffffff, 1);
+            hal_print_hex(hit->start_addr, 0xffff00, 1);
+
+            hal_print("\nhit->end = ", 0xffffff, 1);
+            hal_print_hex(hit->end_addr, 0xffff00, 1);
+
+            hal_print("\n", 0xffffff, 1);
+
+            Black_Blocks *bookmarks_collision =
+                find_collision(hit->end_addr,
+                               hit->end_addr + sizeof(start));
+
+            if (bookmarks_collision != NULL) {
+
+                hal_print("Bookmark Collision!\n", 0xff8800, 1);
+
+                start = hit->end_addr;
+                end = start + size;
+
+                hal_print("Jump to start = ", 0xffffff, 1);
+                hal_print_hex(start, 0xffff00, 1);
+
+                hal_print("\nNew end = ", 0xffffff, 1);
+                hal_print_hex(end, 0xffff00, 1);
+
+                hal_print("\n", 0xffffff, 1);
+
+                continue;
+            }
+            else {
+
+                hal_print("Bookmark FREE\n", 0x00ff00, 1);
+
+                uintptr_t bookmark_addr = hit->end_addr;
+                uintptr_t bookmark = start;
+
+                hal_print("bookmark addr = ", 0xffffff, 1);
+                hal_print_hex(bookmark_addr, 0xffff00, 1);
+
+                hal_print("\nbookmark value = ", 0xffffff, 1);
+                hal_print_hex(bookmark, 0xffff00, 1);
+
+                start = hit->end_addr;
+                end = start + size;
+
+                hal_print("\nnew start = ", 0xffffff, 1);
+                hal_print_hex(start, 0xffff00, 1);
+
+                hal_print("\nnew end = ", 0xffffff, 1);
+                hal_print_hex(end, 0xffff00, 1);
+
+                hal_print("\nWriting bookmark...\n", 0x00ffff, 1);
+
+                *(uintptr_t *)to_virt(bookmark_addr) = bookmark;
+
+                hal_print("Bookmark written successfully!\n", 0x00ff00, 1);
+            }
         }
         else {
-            // Put it in our-array
-            get_new_array_and_add(start , end);
-            // alloc now! 
-            hal_print("\n Allocated in: 0x" , 0x00f0f0 , 1);
-            hal_print_hex( start , 0xffffff , 1);
+
+            hal_print("NO COLLISION\n", 0x00ff00, 1);
+
+            get_new_array_and_add(start, end);
+
+            hal_print("Array updated\n", 0x00ff00, 1);
+
+            hal_print("Allocated at = ", 0xffffff, 1);
+            hal_print_hex(start, 0xffff00, 1);
+
             cursor = end;
+
+            hal_print("\nNew cursor = ", 0xffffff, 1);
+            hal_print_hex(cursor, 0xffff00, 1);
+
+            time -= ticks;
+            hal_print("\nTicks = ", 0xffffff, 1);
+            hal_print_dec(time, 0xffff00, 1);
+
+            hal_print("\nRETURN\n", 0x00ff00, 1);
+
             return (void *)to_virt(start);
         }
     }
+
     OOM();
 }
 
-Black_Blocks *find_collision(uint64_t start , uint64_t end) {
-    for (uint64_t i = 0; i < nonusable_blocks_num ; i++) {
-        if (start < my_array[i].end_addr && end > my_array[i].start_addr) {
-            // This makes big noise
-            // hal_print("\n Collision \n" , 0xff0000 , 1);
+
+Black_Blocks *find_collision(uint64_t start, uint64_t end) {
+    hal_print("\nSearching...\n", 0xffffff, 1);
+    for (uint64_t i = 0; i < nonusable_blocks_num; i++) {
+        if(start < my_array[i].end_addr &&
+           end   > my_array[i].start_addr)
+        {
             return &my_array[i];
-            break;
         }
     }
-    return nothing;
+
+    return NULL;
 }
 
 void get_new_array_and_add(uint64_t start , uint64_t end) {
@@ -220,6 +320,10 @@ void get_new_array_and_add(uint64_t start , uint64_t end) {
 
     // Copy info
     memcpy((void *)to_virt(array_addr) , (void *)to_virt(old_array_addr) , (size_t)old_size);
+
+    // Add the new array in blacklist
+    my_array[0].start_addr = array_addr;
+    my_array[0].end_addr   = array_addr + required_bytes;
 
     // Add the start and end
     my_array[nonusable_blocks_num - 1].start_addr = start;

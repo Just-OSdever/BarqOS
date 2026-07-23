@@ -17,24 +17,25 @@ void APIC_Intialize() {
   uint32_t status = detect_apic();
   if (status == 0) {
     // no support, complete by PIC!
-    hal_print("no support", 0xffffff, 1);
+    hal_print("no support, PIC will be enabled", 0xffffff, 1);
     IRQ_Intialize_PIC();
   } else if (status == 1) {
     // disabled
-    hal_print("disabled", 0xffffff, 1);
+    hal_print("disabled, will be enabled now", 0xffffff, 1);
     outb(0x20, 0xFF); // check that PIC is not working
     outb(0x21, 0xFF);
     enable_apic();
   } else if (status == 2) {
     // enabled! , but check it again
-    hal_print("enabled", 0xffffff, 1);
+    hal_print("Enabled!", 0xffffff, 1);
     outb(0x20, 0xFF); // check that PIC is not working
     outb(0x21, 0xFF);
     enable_apic();
   } else {
-    hal_print("wtf is that, there is a problem in apic, it isn't "
-                       "disabled,enabled or supported",
-                       0xffffff, 1);
+    hal_print("CRITICAL problem happened while enabling APIC\nSystem had to halt", 0xffffff, 1);
+    while(1) {
+      __asm__ volatile ("hlt");
+    }
   }
 }
 

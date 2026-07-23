@@ -7,6 +7,7 @@
 #include   <limine.h>   // Limine header
 #include   <hal.h>      // which contains printing and cls functions
 #include   <strings.h>  // which contains memcpy
+#include   <handlers.h> // Contains timer
 
 // block structure
 typedef struct {
@@ -20,6 +21,8 @@ void pmm_init();                                //  the intializing function
 uint64_t to_virt(uint64_t phys_addr);
 uint64_t to_phys(uint64_t virt_addr);
 void *pmm_alloc(size_t size);
+void *alloc(size_t size);         // The bookmarks alloc_func
+            // Tools used in allocation
 void get_new_array_and_add(uint64_t start , uint64_t end);
 Black_Blocks *find_collision(uint64_t start , uint64_t end);
 

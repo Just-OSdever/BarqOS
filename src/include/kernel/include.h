@@ -14,9 +14,11 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
+#include <allocator_test.h>
 
-extern void idt_init();
 void disable_apic();
+extern void idt_init();
 extern volatile uint64_t limine_base_revision[];
 extern void pmm_init();
 
